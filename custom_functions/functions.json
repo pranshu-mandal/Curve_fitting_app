@@ -1,0 +1,72 @@
+{
+  "power_exp": {
+    "expression": "a*x**b+c*exp(-d*x)",
+    "params": [
+      {
+        "name": "a",
+        "init_value": 1.0,
+        "desc": "Parameter a"
+      },
+      {
+        "name": "b",
+        "init_value": 1.0,
+        "desc": "Parameter b"
+      },
+      {
+        "name": "c",
+        "init_value": 1.0,
+        "desc": "Parameter c"
+      },
+      {
+        "name": "d",
+        "init_value": 1.0,
+        "desc": "Parameter d"
+      }
+    ]
+  },
+  "sum": {
+    "expression": "a*x+b*x**2+c*x**3+d",
+    "params": [
+      {
+        "name": "a",
+        "init_value": 1.0,
+        "desc": "Parameter a"
+      },
+      {
+        "name": "b",
+        "init_value": 1.0,
+        "desc": "Parameter b"
+      },
+      {
+        "name": "c",
+        "init_value": 1.0,
+        "desc": "Parameter c"
+      },
+      {
+        "name": "d",
+        "init_value": 1.0,
+        "desc": "Parameter d"
+      }
+    ]
+  },
+  "odd": {
+    "expression": "a*x+b*x**3+c*x",
+    "params": [
+      {
+        "name": "a",
+        "init_value": 1.0,
+        "desc": "Parameter a"
+      },
+      {
+        "name": "b",
+        "init_value": 1.0,
+        "desc": "Parameter b"
+      },
+      {
+        "name": "c",
+        "init_value": 1.0,
+        "desc": "Parameter c"
+      }
+    ]
+  }
+}

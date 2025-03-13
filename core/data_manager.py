@@ -50,8 +50,14 @@ class DataManager:
         true_params : list
             True parameters used to generate the data
         """
-        # Generate x values
-        x = np.linspace(0, 10, num_points)
+        # Generate x values - avoid starting at 0 for power functions
+        x = np.linspace(0.1, 10, num_points)
+        
+        # Get function info to determine parameter count
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        function_info = function_models.get_function_info(function_name)
+        param_count = function_info['param_count'] if function_info else 3
         
         # Determine true parameters based on function type
         if function_name == "Linear":
@@ -75,12 +81,9 @@ class DataManager:
         elif function_name == "Triple Power Law":
             # y = a*x^b + c*x^d + e*x^f
             true_params = [2.0, 0.5, 1.0, 1.5, 0.5, 2.0]  # a, b, c, d, e, f
-        elif function_name.startswith("Custom"):
-            # For custom functions, use default parameters
-            true_params = [1.0] * 3  # Assume 3 parameters for custom function
         else:
-            # Default case
-            true_params = [1.0] * 3
+            # Default case - generate reasonable parameters
+            true_params = [1.0] * param_count
         
         # Generate clean y values
         y_clean = function(x, *true_params)

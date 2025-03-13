@@ -11,41 +11,31 @@ from PyQt5.QtCore import Qt
 
 def create_algorithm_tab(algorithm_name, algorithm_func):
     """
-    Create a tab for a specific fitting algorithm
-    
-    Parameters:
-    -----------
-    algorithm_name : str
-        Name of the algorithm
-    algorithm_func : callable
-        Reference to the algorithm function
-    
-    Returns:
-    --------
-    QWidget
-        Tab widget containing parameters for the algorithm
+    Modify each tab so that we store references to its parameter fields
+    in tab attributes (e.g., tab.bounds_edit, tab.init_edit). That way,
+    outside code can programmatically update them later.
     """
-    # Create tab widget and layout
+    from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QGroupBox,
+                                 QLabel, QLineEdit, QDoubleSpinBox, QSpinBox,
+                                 QComboBox, QScrollArea)
+
     tab = QWidget()
     main_layout = QVBoxLayout(tab)
-    
-    # Create scroll area for parameters
     scroll = QScrollArea()
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QScrollArea.NoFrame)
-    
-    # Content widget for the scroll area
     content = QWidget()
     form_layout = QFormLayout(content)
     form_layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-    
-    # Add parameters based on algorithm
+
+    # Example references to parameter fields,
+    # which differ by algorithm_name:
     if algorithm_name == "Differential Evolution":
-        # Bounds group
         bounds_group = QGroupBox("Parameter Bounds")
         bounds_layout = QFormLayout()
-        
         bounds_label = QLabel("Format: [lower1,upper1], [lower2,upper2], ...")
+        
+        # Store an editable field for the bounds:
         bounds_edit = QLineEdit("[0,10], [0,10], [0,10]")
         
         bounds_layout.addRow(bounds_label)
@@ -53,6 +43,9 @@ def create_algorithm_tab(algorithm_name, algorithm_func):
         bounds_group.setLayout(bounds_layout)
         form_layout.addRow(bounds_group)
         
+        # Store a reference on the tab:
+        tab.bounds_edit = bounds_edit
+
         # Add algorithm-specific parameters
         strategy_combo = QComboBox()
         strategy_combo.addItems([
@@ -93,15 +86,16 @@ def create_algorithm_tab(algorithm_name, algorithm_func):
         form_layout.addRow("Max Iterations:", maxiter_spin)
         
     elif algorithm_name == "Basin Hopping":
-        # Initial guess group
         init_group = QGroupBox("Initial Guess")
         init_layout = QFormLayout()
-        
         init_edit = QLineEdit("1.0, 1.0, 1.0")
         init_layout.addRow("Initial parameters:", init_edit)
         init_group.setLayout(init_layout)
         form_layout.addRow(init_group)
         
+        # Store a reference on the tab:
+        tab.init_edit = init_edit
+
         # Algorithm parameters
         niter_spin = QSpinBox()
         niter_spin.setRange(10, 1000)
@@ -122,17 +116,17 @@ def create_algorithm_tab(algorithm_name, algorithm_func):
         form_layout.addRow("Step Size:", stepsize_spin)
         
     elif algorithm_name == "SHGO":
-        # Bounds group
         bounds_group = QGroupBox("Parameter Bounds")
         bounds_layout = QFormLayout()
-        
         bounds_label = QLabel("Format: [lower1,upper1], [lower2,upper2], ...")
-        bounds_edit = QLineEdit("[0,10], [0,10], [0,10]")
         
+        bounds_edit = QLineEdit("[0,10], [0,10], [0,10]")
         bounds_layout.addRow(bounds_label)
         bounds_layout.addRow("Bounds:", bounds_edit)
         bounds_group.setLayout(bounds_layout)
         form_layout.addRow(bounds_group)
+        
+        tab.bounds_edit = bounds_edit
         
         # Algorithm parameters
         n_spin = QSpinBox()
@@ -147,17 +141,17 @@ def create_algorithm_tab(algorithm_name, algorithm_func):
         form_layout.addRow("Iterations:", iters_spin)
         
     elif algorithm_name == "Dual Annealing":
-        # Bounds group
         bounds_group = QGroupBox("Parameter Bounds")
         bounds_layout = QFormLayout()
-        
         bounds_label = QLabel("Format: [lower1,upper1], [lower2,upper2], ...")
-        bounds_edit = QLineEdit("[0,10], [0,10], [0,10]")
         
+        bounds_edit = QLineEdit("[0,10], [0,10], [0,10]")
         bounds_layout.addRow(bounds_label)
         bounds_layout.addRow("Bounds:", bounds_edit)
         bounds_group.setLayout(bounds_layout)
         form_layout.addRow(bounds_group)
+
+        tab.bounds_edit = bounds_edit
         
         # Algorithm parameters
         maxiter_spin = QSpinBox()
@@ -179,15 +173,15 @@ def create_algorithm_tab(algorithm_name, algorithm_func):
         form_layout.addRow("Restart Temperature Ratio:", restart_temp_spin)
         
     elif algorithm_name == "Least Squares":
-        # Initial guess group
         init_group = QGroupBox("Initial Guess")
         init_layout = QFormLayout()
-        
         init_edit = QLineEdit("1.0, 1.0, 1.0")
         init_layout.addRow("Initial parameters:", init_edit)
         init_group.setLayout(init_layout)
         form_layout.addRow(init_group)
         
+        tab.init_edit = init_edit
+
         # Method selection
         method_combo = QComboBox()
         method_combo.addItems(["trf", "dogbox", "lm"])

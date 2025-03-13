@@ -51,6 +51,31 @@ class FittingAlgorithms:
         if params is None:
             params = {}
         
+        # Get the function name from the parameters
+        function_name = params.get('function_name', 'Unknown')
+        
+        # Import needed modules for function info
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        
+        # Check for custom function manager
+        from core.custom_function_manager import CustomFunctionManager
+        custom_function_manager = CustomFunctionManager()
+        
+        # Important: Get function info to determine parameter count
+        function_info = function_models.get_function_info(function_name)
+
+        # If not found in built-in functions, check custom functions
+        if not function_info:
+            function_info = custom_function_manager.get_function_info(function_name)
+
+        if not function_info:
+            # Don't use QMessageBox here, just raise an exception
+            raise ValueError(f"Function information for '{function_name}' not found.")
+        
+        # Store parameter count in params for use by algorithms
+        params['param_count'] = function_info['param_count']
+        
         # Run the algorithm
         return self.algorithms[algorithm_name](function, x_data, y_data, params)
     
@@ -72,9 +97,37 @@ class FittingAlgorithms:
         callable
             Residual function that returns sum of squared residuals
         """
+        # Get function info to determine parameter count
+        function_name = function.__name__ if hasattr(function, "__name__") else "unknown"
+        
+        # Import here to avoid circular imports
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        
+        # Direct function matching with the function object itself
+        expected_param_count = None
+        for name, func in function_models.functions.items():
+            if func.__code__.co_code == function.__code__.co_code:  # Compare function code objects
+                function_info = function_models.get_function_info(name)
+                expected_param_count = function_info['param_count']
+                break
+        
         def residual(params):
-            y_pred = function(x_data, *params)
-            return np.sum((y_data - y_pred) ** 2)
+            try:
+                # Convert params to numpy array and flatten
+                params_array = np.asarray(params).flatten()
+                
+                # Ensure we don't pass too many parameters
+                if expected_param_count is not None and len(params_array) > expected_param_count:
+                    # Trim to expected count
+                    params_array = params_array[:expected_param_count]
+                
+                # Call function with correct number of parameters
+                y_pred = function(x_data, *params_array)
+                return np.sum((y_data - y_pred) ** 2)
+            except Exception as e:
+                print(f"Error in residual calculation: {e}")  # Debug info
+                return np.inf
         
         return residual
     
@@ -96,9 +149,37 @@ class FittingAlgorithms:
         callable
             Residual function that returns array of residuals
         """
+        # Get function info to determine parameter count
+        function_name = function.__name__ if hasattr(function, "__name__") else "unknown"
+        
+        # Import here to avoid circular imports
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        
+        # Direct function matching with the function object itself
+        expected_param_count = None
+        for name, func in function_models.functions.items():
+            if func.__code__.co_code == function.__code__.co_code:  # Compare function code objects
+                function_info = function_models.get_function_info(name)
+                expected_param_count = function_info['param_count']
+                break
+        
         def residual(params):
-            y_pred = function(x_data, *params)
-            return y_data - y_pred
+            try:
+                # Convert params to numpy array and flatten
+                params_array = np.asarray(params).flatten()
+                
+                # Ensure we don't pass too many parameters
+                if expected_param_count is not None and len(params_array) > expected_param_count:
+                    # Trim to expected count
+                    params_array = params_array[:expected_param_count]
+                
+                # Call function with correct number of parameters
+                y_pred = function(x_data, *params_array)
+                return y_data - y_pred
+            except Exception as e:
+                print(f"Error in residual array calculation: {e}")  # Debug info
+                return np.full_like(y_data, np.inf)
         
         return residual
     
@@ -107,27 +188,22 @@ class FittingAlgorithms:
     def differential_evolution(self, function, x_data, y_data, params):
         """
         Differential Evolution optimization
-        
-        Parameters:
-        -----------
-        function : callable
-            Function to fit
-        x_data : ndarray
-            x data points
-        y_data : ndarray
-            y data points
-        params : dict
-            Additional parameters for the algorithm
-        
-        Returns:
-        --------
-        ndarray
-            Fitted parameters
-        object
-            Result object from the optimization
         """
-        # Parse bounds
-        bounds = params.get('bounds', [(0, 10)] * 3)  # Default: 3 parameters, bounds [0, 10]
+        # Get function name to determine parameter count
+        function_name = params.get('function_name', 'Unknown')
+        
+        # Get parameter count info
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        function_info = function_models.get_function_info(function_name)
+        param_count = function_info['param_count'] if function_info else 3
+        
+        # Parse bounds with the correct parameter count
+        bounds = params.get('bounds', [(0, 10)] * param_count)
+        
+        # Ensure bounds has the correct length
+        if len(bounds) != param_count:
+            bounds = [(0, 10)] * param_count
         
         # Get other parameters
         strategy = params.get('strategy', 'best1bin')
@@ -157,27 +233,22 @@ class FittingAlgorithms:
     def basin_hopping(self, function, x_data, y_data, params):
         """
         Basin Hopping optimization
-        
-        Parameters:
-        -----------
-        function : callable
-            Function to fit
-        x_data : ndarray
-            x data points
-        y_data : ndarray
-            y data points
-        params : dict
-            Additional parameters for the algorithm
-        
-        Returns:
-        --------
-        ndarray
-            Fitted parameters
-        object
-            Result object from the optimization
         """
-        # Get initial guess
-        x0 = params.get('x0', [1.0, 1.0, 1.0])  # Default: 3 parameters, initial guess [1, 1, 1]
+        # Get function name to determine parameter count
+        function_name = params.get('function_name', 'Unknown')
+        
+        # Get parameter count info
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        function_info = function_models.get_function_info(function_name)
+        param_count = function_info['param_count'] if function_info else 3
+        
+        # Get initial guess with correct parameter count
+        x0 = params.get('x0', [1.0] * param_count)
+        
+        # Ensure x0 has the correct length
+        if len(x0) != param_count:
+            x0 = [1.0] * param_count
         
         # Get other parameters
         niter = params.get('niter', 100)
@@ -201,27 +272,22 @@ class FittingAlgorithms:
     def shgo(self, function, x_data, y_data, params):
         """
         SHGO optimization
-        
-        Parameters:
-        -----------
-        function : callable
-            Function to fit
-        x_data : ndarray
-            x data points
-        y_data : ndarray
-            y data points
-        params : dict
-            Additional parameters for the algorithm
-        
-        Returns:
-        --------
-        ndarray
-            Fitted parameters
-        object
-            Result object from the optimization
         """
-        # Parse bounds
-        bounds = params.get('bounds', [(0, 10)] * 3)  # Default: 3 parameters, bounds [0, 10]
+        # Get function name to determine parameter count
+        function_name = params.get('function_name', 'Unknown')
+        
+        # Get parameter count info
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        function_info = function_models.get_function_info(function_name)
+        param_count = function_info['param_count'] if function_info else 3
+        
+        # Parse bounds with the correct parameter count
+        bounds = params.get('bounds', [(0, 10)] * param_count)
+        
+        # Ensure bounds has the correct length
+        if len(bounds) != param_count:
+            bounds = [(0, 10)] * param_count
         
         # Get other parameters
         n = params.get('n', 100)
@@ -243,27 +309,22 @@ class FittingAlgorithms:
     def dual_annealing(self, function, x_data, y_data, params):
         """
         Dual Annealing optimization
-        
-        Parameters:
-        -----------
-        function : callable
-            Function to fit
-        x_data : ndarray
-            x data points
-        y_data : ndarray
-            y data points
-        params : dict
-            Additional parameters for the algorithm
-        
-        Returns:
-        --------
-        ndarray
-            Fitted parameters
-        object
-            Result object from the optimization
         """
-        # Parse bounds
-        bounds = params.get('bounds', [(0, 10)] * 3)  # Default: 3 parameters, bounds [0, 10]
+        # Get function name to determine parameter count
+        function_name = params.get('function_name', 'Unknown')
+        
+        # Get parameter count info
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        function_info = function_models.get_function_info(function_name)
+        param_count = function_info['param_count'] if function_info else 3
+        
+        # Parse bounds with the correct parameter count
+        bounds = params.get('bounds', [(0, 10)] * param_count)
+        
+        # Ensure bounds has the correct length
+        if len(bounds) != param_count:
+            bounds = [(0, 10)] * param_count
         
         # Get other parameters
         maxiter = params.get('maxiter', 1000)
@@ -306,8 +367,21 @@ class FittingAlgorithms:
         object
             Result object from the optimization
         """
+        # Get function name to determine parameter count
+        function_name = params.get('function_name', 'Unknown')
+        
         # Get initial guess
-        x0 = params.get('x0', [1.0, 1.0, 1.0])  # Default: 3 parameters, initial guess [1, 1, 1]
+        from core.function_models import FunctionModels
+        function_models = FunctionModels()
+        function_info = function_models.get_function_info(function_name)
+        param_count = function_info['param_count'] if function_info else 3
+        
+        # Use provided initial guess or ensure it has correct length
+        x0 = params.get('x0', [1.0] * param_count)
+        
+        # Ensure x0 matches the function parameter count
+        if len(x0) != param_count:
+            x0 = [1.0] * param_count
         
         # Get other parameters
         method = params.get('method', 'trf')

@@ -26,6 +26,9 @@ from core.function_models import FunctionModels
 from core.fitting import FittingAlgorithms
 from utils.report import generate_report
 
+from ui.custom_function_dialog import CustomFunctionDialog
+from core.custom_function_manager import CustomFunctionManager
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -36,6 +39,7 @@ class MainWindow(QMainWindow):
         self.data_manager = DataManager()
         self.function_models = FunctionModels()
         self.fitting_algorithms = FittingAlgorithms()
+        self.custom_function_manager = CustomFunctionManager()
         
         # Set up the UI
         self.setWindowTitle("Advanced Curve Fitting Tool")
@@ -75,10 +79,17 @@ class MainWindow(QMainWindow):
         self.function_label = QLabel("Function Model:")
         self.function_combo = QComboBox()
         self.function_combo.addItems(self.function_models.get_function_names())
+        # Add custom functions to the dropdown
+        self.function_combo.addItems(self.custom_function_manager.get_function_names())
         self.add_custom_function_btn = QPushButton("Add Custom Function")
         self.function_layout.addWidget(self.function_label)
         self.function_layout.addWidget(self.function_combo)
         self.function_layout.addWidget(self.add_custom_function_btn)
+
+        # Add function equation display
+        self.function_equation_label = QLabel()
+        self.function_equation_label.setStyleSheet("font-style: italic;")
+        self.function_layout.addWidget(self.function_equation_label)
         self.function_layout.addStretch()
         self.data_layout.addLayout(self.function_layout)
         
@@ -154,11 +165,17 @@ class MainWindow(QMainWindow):
         self.add_custom_function_btn.clicked.connect(self.add_custom_function)
         self.run_btn.clicked.connect(self.run_fitting)
         
+        # Connect function selection changes to a method that updates parameter fields
+        self.function_combo.currentTextChanged.connect(self.on_function_changed)
+
         # Apply modern styling
         self.apply_styling()
         
         # Initialize plot
         self.init_plot()
+
+        # At the end of __init__, call the function once to set initial values
+        self.on_function_changed(self.function_combo.currentText())
     
     def apply_styling(self):
         """Apply modern styling to the application"""
@@ -236,10 +253,22 @@ class MainWindow(QMainWindow):
         # Get the selected function
         function_name = self.function_combo.currentText()
         
+        # Try to get the function from built-in functions first
+        function = self.function_models.get_function(function_name)
+        
+        # If not found, check custom functions
+        if function is None:
+            function = self.custom_function_manager.get_function(function_name)
+        
+        if function is None:
+            QMessageBox.critical(
+                self, "Error", f"Function '{function_name}' not found."
+            )
+            return
+        
         # Generate synthetic data with noise
         x, y, true_params = self.data_manager.generate_synthetic_data(
-            function_name, 
-            self.function_models.get_function(function_name)
+            function_name, function
         )
         
         # Update plot
@@ -308,17 +337,30 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def add_custom_function(self):
         """Add a custom function for fitting"""
-        # In a full implementation, this would open a dialog to enter a custom function
-        # For simplicity, we'll just add a placeholder custom function
-        custom_function_name = "Custom Function"
-        self.function_combo.addItem(custom_function_name)
-        self.function_combo.setCurrentText(custom_function_name)
-        
-        # For a real implementation, you'd want to parse the function definition and add it to the models
-        QMessageBox.information(
-            self, "Custom Function", 
-            "In a full implementation, this would open a dialog to define a custom function."
-        )
+        dialog = CustomFunctionDialog(self)
+        if dialog.exec_():
+            # Get function details from dialog
+            function_name = dialog.function_name
+            function_expr = dialog.function_expr
+            function_params = dialog.params
+            
+            # Add to custom function manager
+            success = self.custom_function_manager.add_function(
+                function_name, function_expr, function_params)
+            
+            if success:
+                # Add to function dropdown
+                self.function_combo.addItem(function_name)
+                self.function_combo.setCurrentText(function_name)
+                QMessageBox.information(
+                    self, "Custom Function", 
+                    f"Custom function '{function_name}' added successfully."
+                )
+            else:
+                QMessageBox.critical(
+                    self, "Error", 
+                    "Failed to add custom function. Check console for details."
+                )
     
     @pyqtSlot()
     def run_fitting(self):
@@ -331,17 +373,126 @@ class MainWindow(QMainWindow):
         
         # Get the selected function and algorithm
         function_name = self.function_combo.currentText()
+        
+        # Try to get the function from built-in functions first
         function = self.function_models.get_function(function_name)
+        
+        # If not found, check custom functions
+        if function is None:
+            function = self.custom_function_manager.get_function(function_name)
+        
+        if function is None:
+            QMessageBox.critical(
+                self, "Error", f"Function '{function_name}' not found."
+            )
+            return
         
         algorithm_index = self.algorithm_tabs.currentIndex()
         algorithm_name = self.algorithm_tabs.tabText(algorithm_index)
         
         # Get algorithm parameters from the current tab
         current_tab = self.algorithm_tabs.currentWidget()
-        algorithm_params = {}
         
-        # In a full implementation, you'd extract parameters from the UI controls
-        # For this simplified version, we'll use default parameters
+        # Important: Get function info to determine parameter count
+        function_info = self.function_models.get_function_info(function_name)
+        
+        # If not found in built-in functions, check custom functions
+        if not function_info:
+            function_info = self.custom_function_manager.get_function_info(function_name)
+            
+        if not function_info:
+            QMessageBox.critical(
+                self, "Error", f"Function information for '{function_name}' not found."
+            )
+            return
+            
+        param_count = function_info['param_count']
+        
+        # Create algorithm params dictionary with function name
+        algorithm_params = {'function_name': function_name}
+        
+        # Extract parameters based on algorithm type
+        if algorithm_name == "Differential Evolution":
+            if hasattr(current_tab, 'bounds_edit'):
+                # Parse bounds from UI
+                bounds_text = current_tab.bounds_edit.text()
+                try:
+                    # Use a regular expression to extract all pairs of numbers inside brackets
+                    import re
+                    bounds_list = []
+                    # Find all content between square brackets
+                    matches = re.findall(r'\[(.*?)\]', bounds_text)
+                    for match in matches:
+                        # Split by comma and convert to floats
+                        values = match.split(',')
+                        if len(values) == 2:
+                            lower, upper = float(values[0].strip()), float(values[1].strip())
+                            bounds_list.append((lower, upper))
+                    
+                    # Make sure we have the right number of bounds
+                    if len(bounds_list) != param_count:
+                        # Adjust to match param_count
+                        if len(bounds_list) < param_count:
+                            bounds_list.extend([(0, 10)] * (param_count - len(bounds_list)))
+                        else:
+                            bounds_list = bounds_list[:param_count]
+                    
+                    algorithm_params['bounds'] = bounds_list
+                except Exception as e:
+                    QMessageBox.warning(self, "Parameter Error", 
+                                       f"Error parsing bounds: {str(e)}\nUsing default bounds.")
+                    algorithm_params['bounds'] = [(0, 10)] * param_count
+        
+        elif algorithm_name == "Basin Hopping" or algorithm_name == "Least Squares":
+            if hasattr(current_tab, 'init_edit'):
+                # Parse initial guess from UI
+                init_text = current_tab.init_edit.text()
+                try:
+                    # Convert text like "1.0, 2.0, 3.0" to list [1.0, 2.0, 3.0]
+                    init_values = [float(x.strip()) for x in init_text.split(',')]
+                    # Ensure we have exactly the right number of parameters
+                    if len(init_values) != param_count:
+                        # Adjust to match param_count
+                        if len(init_values) < param_count:
+                            init_values.extend([1.0] * (param_count - len(init_values)))
+                        else:
+                            init_values = init_values[:param_count]
+                    algorithm_params['x0'] = init_values
+                except Exception as e:
+                    QMessageBox.warning(self, "Parameter Error", 
+                                       f"Error parsing initial guess: {str(e)}\nUsing default values.")
+                    algorithm_params['x0'] = [1.0] * param_count
+        
+        # Fix for SHGO and Dual Annealing bounds parsing
+        elif algorithm_name == "SHGO" or algorithm_name == "Dual Annealing":
+            if hasattr(current_tab, 'bounds_edit'):
+                # Parse bounds from UI using regex
+                bounds_text = current_tab.bounds_edit.text()
+                try:
+                    import re
+                    bounds_list = []
+                    # Find all content between square brackets
+                    matches = re.findall(r'\[(.*?)\]', bounds_text)
+                    for match in matches:
+                        # Split by comma and convert to floats
+                        values = match.split(',')
+                        if len(values) == 2:
+                            lower, upper = float(values[0].strip()), float(values[1].strip())
+                            bounds_list.append((lower, upper))
+                    
+                    # Make sure we have the right number of bounds
+                    if len(bounds_list) != param_count:
+                        # Adjust to match param_count
+                        if len(bounds_list) < param_count:
+                            bounds_list.extend([(0, 10)] * (param_count - len(bounds_list)))
+                        else:
+                            bounds_list = bounds_list[:param_count]
+                    
+                    algorithm_params['bounds'] = bounds_list
+                except Exception as e:
+                    QMessageBox.warning(self, "Parameter Error", 
+                                       f"Error parsing bounds: {str(e)}\nUsing default bounds.")
+                    algorithm_params['bounds'] = [(0, 10)] * param_count
         
         try:
             # Run the fitting algorithm
@@ -402,3 +553,64 @@ class MainWindow(QMainWindow):
         
         self.figure.tight_layout()
         self.canvas.draw()
+    
+    def on_function_changed(self, function_name=None):
+        """
+        Update parameter UI fields when function selection changes
+        """
+        if function_name is None:
+            function_name = self.function_combo.currentText()
+        
+        # Check if this is a built-in or custom function
+        info = self.function_models.get_function_info(function_name)
+        
+        # If not found in built-in functions, check custom functions
+        if not info:
+            info = self.custom_function_manager.get_function_info(function_name)
+        
+        if not info:
+            return  # safety check
+        
+        param_count = info['param_count']
+        
+        # Update the equation display
+        if 'equation' in info:
+            self.function_equation_label.setText(f"f(x) = {info['equation']}")
+        
+        # Update bounds for algorithms that use bounds
+        bounds_str = ", ".join(["[0,10]"] * param_count)
+        if hasattr(self.de_tab, 'bounds_edit'):
+            self.de_tab.bounds_edit.setText(bounds_str)
+        if hasattr(self.shgo_tab, 'bounds_edit'):
+            self.shgo_tab.bounds_edit.setText(bounds_str)
+        if hasattr(self.dual_annealing_tab, 'bounds_edit'):
+            self.dual_annealing_tab.bounds_edit.setText(bounds_str)
+        
+        # Update initial values for algorithms that use them
+        init_str = ", ".join(["1.0"] * param_count)
+        if hasattr(self.basin_tab, 'init_edit'):
+            self.basin_tab.init_edit.setText(init_str)
+        if hasattr(self.least_squares_tab, 'init_edit'):
+            self.least_squares_tab.init_edit.setText(init_str)
+        
+        # Update display to show equation and parameters
+        self.report_text.clear()
+        self.report_text.append(f"Selected function: {function_name}")
+        self.report_text.append(f"Equation: {info['equation']}")
+        
+        # Fix for parameter display
+        if 'params' in info:
+            # Check if params contains dictionaries (custom function) or strings (built-in)
+            if info['params'] and isinstance(info['params'][0], dict):
+                # For custom functions: extract the name from each parameter dictionary
+                param_names = [p['name'] for p in info['params']]
+                self.report_text.append(f"Parameters: {', '.join(param_names)}")
+            else:
+                # For built-in functions: params is already a list of strings
+                self.report_text.append(f"Parameters: {', '.join(info['params'])}")
+        else:
+            # Fallback if no params information is available
+            param_list = [f'p{i}' for i in range(param_count)]
+            self.report_text.append(f"Parameters: {', '.join(param_list)}")
+            
+        self.report_text.append(f"Required parameter count: {param_count}")
